@@ -1,6 +1,7 @@
 package com.gmail.ianlim224.advancedlottery.time;
 
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
+import com.gmail.ianlim224.advancedlottery.LotteryGrabber;
 import com.gmail.ianlim224.advancedlottery.fireworks.Fireworks;
 import com.gmail.ianlim224.advancedlottery.gui.LotteryGUI;
 import com.gmail.ianlim224.advancedlottery.messages.Messages;
