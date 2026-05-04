@@ -1,9 +1,10 @@
 package com.gmail.ianlim224.advancedlottery.clickablechat;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 
 public interface Clickable {
-	public void sendToPlayer(Player p, int ticket);
+    void sendToPlayer(Player buyer, int tickets);
 
-	public void sendMessageWithAction(Player p, String msg, String hiddenMsg, Player target);
+    void sendMessageWithAction(Player sender, Component message, Component hoverText, Player target);
 }

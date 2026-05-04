@@ -1,6 +1,5 @@
 package com.gmail.ianlim224.advancedlottery.time;
 
-import com.cryptomorin.xseries.messages.Titles;
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
 import com.gmail.ianlim224.advancedlottery.fireworks.Fireworks;
 import com.gmail.ianlim224.advancedlottery.gui.LotteryGUI;
@@ -10,18 +9,20 @@ import com.gmail.ianlim224.advancedlottery.object.LotteryPot;
 import com.gmail.ianlim224.advancedlottery.object.LotteryTicket;
 import com.gmail.ianlim224.advancedlottery.sounds.WinSound;
 import com.gmail.ianlim224.advancedlottery.utils.SpigotCommons;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 public class LotteryTimer {
     private final AdvancedLottery plugin;
     private final long duration;
-    private long start;
     private long end;
     private BukkitTask task;
 
@@ -34,73 +35,58 @@ public class LotteryTimer {
         start(duration);
     }
 
-    public void start(long duration) {
-        if (task != null)
-            task.cancel();
+    public void start(long millis) {
+        if (task != null) task.cancel();
 
-        this.start = System.currentTimeMillis();
-
-        this.end = start + duration;
+        this.end = System.currentTimeMillis() + millis;
 
         task = new BukkitRunnable() {
             @Override
             public void run() {
                 end();
             }
-        }.runTaskLater(plugin, duration / 1000 * 20);
+        }.runTaskLater(plugin, millis / 50);
 
         plugin.getReminderManager().reload();
     }
 
     public void end() {
         plugin.getFileLogging().debug("Ending lottery...");
+
         if (LotteryTicket.getInstance(plugin).isEmpty()) {
-            plugin.getFileLogging().debug("There were no winners!");
+            plugin.getFileLogging().debug("No participants, no winner.");
 
             if (plugin.getConfig().getBoolean("allow_broadcast")) {
-                for (Player p : Bukkit.getOnlinePlayers()) {
-                    p.sendMessage(Messages.BROADCAST_NO_WINNER.getConfigValue(p));
-                }
+                Messages.BROADCAST_NO_WINNER.sendToAll(Bukkit.getOnlinePlayers());
             }
         } else {
-            LotteryPot lotteryPot = LotteryPot.getInstance(plugin);
-            double tax = plugin.getConfig().getDouble("lottery_tax_in_percentage");
-            if (tax > 1) {
-                tax = 0;
-                plugin.getLogger().warning("Lottery tax can only range from 0 - 1");
-            }
+            LotteryPot pot = LotteryPot.getInstance(plugin);
+            double tax = Math.min(1.0, plugin.getConfig().getDouble("lottery_tax_in_percentage"));
+            if (LotteryTicket.getInstance(plugin).getPlayers().size() == 1) tax = 0;
 
-            if (LotteryTicket.getInstance(plugin).getPlayers().size() == 1) {
-                tax = 0;
-            }
-
-            double prize = lotteryPot.getMoneyInPot() * (1 - tax);
-
+            double prize = pot.getMoneyInPot() * (1 - tax);
             OfflinePlayer winner = Bukkit.getOfflinePlayer(LotteryTicket.getInstance(plugin).selectWinner());
 
-            processWinner(winner, prize, plugin.getConfig().getBoolean("shoot_fireworks_on_win"));
-
+            processWinner(winner, prize);
             broadcastWin(winner, prize);
-
-            updateWinnerData(winner);
+            plugin.getWinnerRegistry().setWinner(winner);
         }
 
         cleanUp();
-
         setDuration(duration);
     }
 
-    private void processWinner(OfflinePlayer winner, double prize, boolean fireworks) {
-        plugin.getFileLogging().debug(String.format("%s won the lottery with a prize of %f", winner.getName(), prize));
+    private void processWinner(OfflinePlayer winner, double prize) {
+        plugin.getFileLogging().debug(
+                String.format("%s won the lottery with a prize of %.2f", winner.getName(), prize));
         plugin.getVaultEcon().payMoney(prize, winner);
 
         if (winner.isOnline()) {
-            Player player = Bukkit.getPlayer(winner.getUniqueId());
-            if (fireworks) {
-                Fireworks fw = new Fireworks();
-                fw.shootFireworks(player, plugin);
+            Player online = winner.getPlayer();
+            if (plugin.getConfig().getBoolean("shoot_fireworks_on_win")) {
+                new Fireworks().shootFireworks(online, plugin);
             }
-            new WinSound().playSound(player, plugin);
+            new WinSound().playSound(online, plugin);
         }
 
         LotterySql.getInstance(plugin).addWins(winner);
@@ -108,25 +94,30 @@ public class LotteryTimer {
     }
 
     private void broadcastWin(OfflinePlayer winner, double prize) {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            p.sendMessage(Messages.LOTTERY_WIN.getConfigValue(p).replaceAll("%player%", winner.getName())
-                    .replaceAll("%money%", SpigotCommons.formatMoney(prize)));
-        }
+        String winnerName = winner.getName() != null ? winner.getName() : "Unknown";
+        String money = SpigotCommons.formatMoney(prize);
+
+        Messages.LOTTERY_WIN.sendToAll(Bukkit.getOnlinePlayers(),
+                Placeholder.unparsed("player", winnerName),
+                Placeholder.unparsed("money", money));
 
         if (plugin.getConfig().getBoolean("play_out_title_when_win")) {
+            LotteryGrabber grabber = AdvancedLottery.getLotteryGrabber();
+            Title.Times times = Title.Times.times(
+                    Duration.ofMillis((long) (grabber.getFadeInSeconds() * 1000)),
+                    Duration.ofMillis((long) (grabber.getStaySeconds() * 1000)),
+                    Duration.ofMillis((long) (grabber.getFadeOutSeconds() * 1000)));
+
             for (Player p : Bukkit.getOnlinePlayers()) {
-                Titles.sendTitle(p, (int) (AdvancedLottery.getLotteryGrabber().getFadeInSeconds() * 20),
-                        (int) (AdvancedLottery.getLotteryGrabber().getStaySeconds() * 20),
-                        (int) (AdvancedLottery.getLotteryGrabber().getFadeOutSeconds() * 20),
-                        Messages.WINNER_TITLE_MESSAGE.getConfigValue(p).replaceAll("%player%", winner.getName()),
-                        Messages.WINNER_SUBTITLE_MESSAGE.getConfigValue(p).replaceAll("%money%",
-                                SpigotCommons.formatMoney(prize)));
+                Title title = Title.title(
+                        Messages.WINNER_TITLE_MESSAGE.asComponent(p,
+                                Placeholder.unparsed("player", winnerName)),
+                        Messages.WINNER_SUBTITLE_MESSAGE.asComponent(p,
+                                Placeholder.unparsed("money", money)),
+                        times);
+                p.showTitle(title);
             }
         }
-    }
-
-    private void updateWinnerData(OfflinePlayer winner) {
-        plugin.getWinnerRegistry().setWinner(winner);
     }
 
     private void cleanUp() {
@@ -142,9 +133,7 @@ public class LotteryTimer {
     }
 
     public String time(boolean isShort) {
-        if (timeLeft() < 0)
-            end();
-
+        if (timeLeft() < 0) end();
         return new Time(timeLeft(), isShort, plugin).toString();
     }
 
@@ -152,7 +141,7 @@ public class LotteryTimer {
         return end - System.currentTimeMillis();
     }
 
-    public void setDuration(long duration) {
-        start(duration);
+    public void setDuration(long millis) {
+        start(millis);
     }
 }

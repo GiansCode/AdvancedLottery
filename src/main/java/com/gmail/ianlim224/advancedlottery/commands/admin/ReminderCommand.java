@@ -7,68 +7,54 @@ import com.gmail.ianlim224.advancedlottery.commands.Permissions;
 import com.gmail.ianlim224.advancedlottery.time.Reminder;
 import com.gmail.ianlim224.advancedlottery.time.Time;
 import com.gmail.ianlim224.advancedlottery.time.TimeParser;
-import com.gmail.ianlim224.advancedlottery.utils.SpigotCommons;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.command.CommandSender;
 
 public class ReminderCommand implements Executable {
 
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+
     @Override
     public CommandResponse onExecute(CommandSender sender, String[] args, AdvancedLottery plugin) {
-        if ((args.length == 2 && args[1].equalsIgnoreCase("list")) || args.length == 1) {
-            sender.sendMessage(SpigotCommons.f("&aReminders:"));
+        if (args.length == 1 || (args.length == 2 && args[1].equalsIgnoreCase("list"))) {
+            sender.sendMessage(MM.deserialize("<green>Reminders:"));
             for (Reminder reminder : plugin.getReminderManager().getReminders()) {
-                sender.sendMessage("- " + reminder.toString());
+                sender.sendMessage(MM.deserialize("<gray>- <white>" + reminder));
             }
             return CommandResponse.SUCCESS;
         }
 
         if (args.length == 3) {
-            StringBuilder builder = new StringBuilder(args[0]);
-            for (int i = 1; i < args.length; i++) {
-                builder.append(args[i]);
-            }
+            String combined = args[0] + args[1] + args[2];
+            TimeParser parser = new TimeParser(combined, plugin);
 
-            TimeParser parser = new TimeParser(builder.toString(), plugin);
+            if (!parser.isValid()) return CommandResponse.INCORRECT_ARGS;
 
-            if (!parser.isValid()) {
-                return CommandResponse.INCORRECT_ARGS;
-            }
-
-            final Time time = parser.getTime();
+            Time time = parser.getTime();
 
             if (args[1].equalsIgnoreCase("add")) {
                 plugin.getReminderManager().addReminder(new Reminder(time, plugin));
-                sender.sendMessage(SpigotCommons.f("&aSuccessfully added lottery reminder!"));
+                sender.sendMessage(MM.deserialize("<green>Lottery reminder added!"));
                 return CommandResponse.SUCCESS;
+            }
 
-            } else if (args[1].equalsIgnoreCase("remove")) {
+            if (args[1].equalsIgnoreCase("remove")) {
                 Reminder reminder = new Reminder(time, plugin);
                 if (!plugin.getReminderManager().hasReminder(reminder)) {
-                    sender.sendMessage(SpigotCommons.f("&cLottery reminder does not exist! Do /lottery reminder list to check the list of reminders!"));
+                    sender.sendMessage(MM.deserialize(
+                            "<red>That reminder does not exist. Use <yellow>/lottery reminder list</yellow> to view all reminders."));
                     return CommandResponse.SUCCESS;
                 }
-
                 plugin.getReminderManager().removeReminder(reminder);
-                sender.sendMessage(SpigotCommons.f("&aSuccessfully removed lottery reminder!"));
+                sender.sendMessage(MM.deserialize("<green>Lottery reminder removed!"));
                 return CommandResponse.SUCCESS;
             }
         }
+
         return CommandResponse.INCORRECT_ARGS;
     }
 
-    @Override
-    public String getLabel() {
-        return "reminder";
-    }
-
-    @Override
-    public Permissions getPermission() {
-        return Permissions.ADMIN;
-    }
-
-    @Override
-    public boolean isCmdPlayerOnly() {
-        return false;
-    }
-
+    @Override public String getLabel()          { return "reminder"; }
+    @Override public Permissions getPermission() { return Permissions.ADMIN; }
+    @Override public boolean isCmdPlayerOnly()   { return false; }
 }

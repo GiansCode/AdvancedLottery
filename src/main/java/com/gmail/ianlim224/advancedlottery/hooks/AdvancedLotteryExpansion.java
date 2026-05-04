@@ -5,7 +5,6 @@ import com.gmail.ianlim224.advancedlottery.mysql.LotterySql;
 import com.gmail.ianlim224.advancedlottery.object.LotteryPot;
 import com.gmail.ianlim224.advancedlottery.object.LotteryTicket;
 import com.gmail.ianlim224.advancedlottery.utils.SpigotCommons;
-import me.clip.placeholderapi.PlaceholderAPI;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.entity.Player;
 

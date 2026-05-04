@@ -1,15 +1,19 @@
 package com.gmail.ianlim224.advancedlottery.gui;
 
-import com.cryptomorin.xseries.XMaterial;
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
 import com.gmail.ianlim224.advancedlottery.ItemGrabber;
 import com.gmail.ianlim224.advancedlottery.items.MenuItems;
 import com.gmail.ianlim224.advancedlottery.utils.ItemBuilder;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 
 public class HelpGUI {
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+
     private static HelpGUI instance;
     private final AdvancedLottery plugin;
     private Inventory inventory;
@@ -20,9 +24,7 @@ public class HelpGUI {
     }
 
     public static HelpGUI getInstance(AdvancedLottery plugin) {
-        if (instance == null)
-            instance = new HelpGUI(plugin);
-
+        if (instance == null) instance = new HelpGUI(plugin);
         return instance;
     }
 
@@ -32,19 +34,18 @@ public class HelpGUI {
 
     public void reload() {
         inventory = Bukkit.createInventory(new HelpHolder(), 54,
-                AdvancedLottery.f(AdvancedLottery.getLotteryGrabber().getHelpMenuName()));
+                MM.deserialize(AdvancedLottery.getLotteryGrabber().getHelpMenuName()));
 
-        for (int i = 0; i < 54; i++) {
-            //parse item allows for itemstack data to be changed
-            inventory.setItem(i, new ItemBuilder(XMaterial.matchXMaterial(MenuItems.HELP_BACKGROUND_MATERIAL.getStringValue()).get().parseItem())
-                    .setName(" ").toItemStack());
-        }
-        inventory.setItem(4, ItemGrabber.getInstance(plugin).getBookInstructions());
+        Material bgMat = Material.matchMaterial(MenuItems.HELP_BACKGROUND_MATERIAL.getRaw());
+        if (bgMat == null) bgMat = Material.YELLOW_STAINED_GLASS_PANE;
+        var bg = new ItemBuilder(bgMat).displayName(Component.empty()).build();
+
+        for (int i = 0; i < 54; i++) inventory.setItem(i, bg);
+
+        inventory.setItem(4,  ItemGrabber.getInstance(plugin).getBookInstructions());
         inventory.setItem(31, ItemGrabber.getInstance(plugin).getWinNavigator());
         inventory.setItem(49, ItemGrabber.getInstance(plugin).getCommandHelp());
     }
 
-    public Inventory getInventory() {
-        return inventory;
-    }
+    public Inventory getInventory() { return inventory; }
 }

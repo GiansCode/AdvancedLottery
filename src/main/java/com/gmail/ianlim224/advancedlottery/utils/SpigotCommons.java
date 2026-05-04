@@ -1,58 +1,40 @@
 package com.gmail.ianlim224.advancedlottery.utils;
 
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
-import org.bukkit.ChatColor;
 
 import java.text.DecimalFormat;
 
-public class SpigotCommons {
-    private static final long MILLION = 1000000L;
-    private static final long BILLION = 1000000000L;
-    private static final long TRILLION = 1000000000000L;
+public final class SpigotCommons {
+    private static final long MILLION  = 1_000_000L;
+    private static final long BILLION  = 1_000_000_000L;
+    private static final long TRILLION = 1_000_000_000_000L;
+
     private static DecimalFormat MONEY_FORMAT = new DecimalFormat("#,###,##0.00");
-    private SpigotCommons() {
-    }
 
-    public static void setMoneyFormat(String format, AdvancedLottery plugin) {
+    private SpigotCommons() {}
+
+    public static void setMoneyFormat(String pattern, AdvancedLottery plugin) {
         try {
-            MONEY_FORMAT = new DecimalFormat(format);
+            MONEY_FORMAT = new DecimalFormat(pattern);
         } catch (IllegalArgumentException e) {
-            plugin.getLogger().info("Invalid money_display_format! Resetting to default format...");
+            plugin.getLogger().warning("Invalid money_display_format — using default.");
         }
     }
 
-    public static boolean isInteger(String str) {
-        if (str == null) {
-            return false;
-        }
-        int length = str.length();
-        if (length == 0) {
-            return false;
-        }
-        int i = 0;
-        if (str.charAt(0) == '-') {
-            if (length == 1) {
-                return false;
-            }
-            i = 1;
-        }
-        for (; i < length; i++) {
-            char c = str.charAt(i);
-            if (c < '0' || c > '9') {
-                return false;
-            }
+    public static boolean isInteger(String s) {
+        if (s == null || s.isEmpty()) return false;
+        int start = s.charAt(0) == '-' ? 1 : 0;
+        if (start == 1 && s.length() == 1) return false;
+        for (int i = start; i < s.length(); i++) {
+            if (s.charAt(i) < '0' || s.charAt(i) > '9') return false;
         }
         return true;
     }
 
-    public static String formatMoney(double money) {
-        return money < MILLION ? MONEY_FORMAT.format(money) :
-                money < BILLION ? MONEY_FORMAT.format(money / MILLION) + " million" :
-                        money < TRILLION ? MONEY_FORMAT.format(money / BILLION) + " billion" :
-                                MONEY_FORMAT.format(money / TRILLION) + " trillion";
-    }
-
-    public static String f(String msg) {
-        return ChatColor.translateAlternateColorCodes('&', msg);
+    public static String formatMoney(double amount) {
+        if (amount < MILLION)  return MONEY_FORMAT.format(amount);
+        if (amount < BILLION)  return MONEY_FORMAT.format(amount / MILLION)  + " million";
+        if (amount < TRILLION) return MONEY_FORMAT.format(amount / BILLION)  + " billion";
+        return MONEY_FORMAT.format(amount / TRILLION) + " trillion";
     }
 }

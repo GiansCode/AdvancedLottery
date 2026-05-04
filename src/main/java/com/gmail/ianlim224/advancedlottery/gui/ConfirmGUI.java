@@ -1,6 +1,5 @@
 package com.gmail.ianlim224.advancedlottery.gui;
 
-import com.cryptomorin.xseries.XMaterial;
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
 import com.gmail.ianlim224.advancedlottery.ItemGrabber;
 import com.gmail.ianlim224.advancedlottery.items.MenuItems;
@@ -10,7 +9,10 @@ import com.gmail.ianlim224.advancedlottery.object.Purchase;
 import com.gmail.ianlim224.advancedlottery.sounds.CancelSound;
 import com.gmail.ianlim224.advancedlottery.utils.ItemBuilder;
 import com.gmail.ianlim224.advancedlottery.utils.SpigotCommons;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -24,140 +26,136 @@ import java.util.Map;
 import java.util.UUID;
 
 public class ConfirmGUI implements Listener {
-    private static Map<UUID, Integer> counter = new HashMap<>();
+
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+    private static final Map<UUID, Integer> counter = new HashMap<>();
+
     private final Inventory inv;
-    private ItemGrabber grabber;
-    private CancelSound sound;
-    private AdvancedLottery plugin;
-    private LotteryTicket ticket;
+    private final ItemGrabber grabber;
+    private final CancelSound sound;
+    private final AdvancedLottery plugin;
+    private final LotteryTicket ticket;
 
     public ConfirmGUI(AdvancedLottery plugin) {
-        inv = Bukkit.createInventory(new ConfirmHolder(), 54,
-                AdvancedLottery.f(AdvancedLottery.getLotteryGrabber().getConfirmMenuName()));
-        grabber = ItemGrabber.getInstance(plugin);
-        sound = new CancelSound();
         this.plugin = plugin;
-        ticket = LotteryTicket.getInstance(plugin);
+        this.grabber = ItemGrabber.getInstance(plugin);
+        this.sound   = new CancelSound();
+        this.ticket  = LotteryTicket.getInstance(plugin);
+        this.inv     = Bukkit.createInventory(new ConfirmHolder(), 54,
+                MM.deserialize(AdvancedLottery.getLotteryGrabber().getConfirmMenuName()));
     }
 
     public static int getCounter(Player player) {
-        if (counter.containsKey(player.getUniqueId())) {
-            return counter.get(player.getUniqueId());
-        } else {
-            throw new NullPointerException("Player is not added yet!");
-        }
+        Integer c = counter.get(player.getUniqueId());
+        if (c == null) throw new NullPointerException("Player not in counter map.");
+        return c;
     }
 
-    public static void removePlayer(Player player) {
-        counter.remove(player.getUniqueId());
-    }
+    public static void removePlayer(Player player) { counter.remove(player.getUniqueId()); }
+    public static void addPlayerToCounter(Player player) { counter.put(player.getUniqueId(), 1); }
 
-    public static void addPlayerToCounter(Player player) {
-        counter.put(player.getUniqueId(), 1);
-    }
-
-    private ItemStack getTicketAmountItem(final int amount) {
-        return new ItemBuilder(XMaterial.matchXMaterial(MenuItems.TICKET_AMOUNT_MATERIAL.getStringValue()).get().parseMaterial()).setName(
-                MenuItems.TICKET_AMOUNT_NAME.getStringValue().replaceAll("%ticket%", Integer.toString(amount)))
-                .setLore(AdvancedLottery.replace(AdvancedLottery.replace(MenuItems.TICKET_AMOUNT_LORE.getListValue(), "%money%",
-                        SpigotCommons.formatMoney(amount * plugin.getConfig().getDouble("buy_price"))), "%ticket%", Integer.toString(amount)))
-                .toItemStack();
-    }
-
-    private void setTicketAmountItem(int amount, Inventory inv) {
-        inv.setItem(22, getTicketAmountItem(amount));
+    private ItemStack getTicketAmountItem(int amount) {
+        Material mat = Material.matchMaterial(MenuItems.TICKET_AMOUNT_MATERIAL.getRaw());
+        if (mat == null) mat = Material.PAPER;
+        return new ItemBuilder(mat)
+                .displayName(MM.deserialize(MenuItems.TICKET_AMOUNT_NAME.getRaw(),
+                        Placeholder.unparsed("ticket", Integer.toString(amount))))
+                .lore(MenuItems.TICKET_AMOUNT_LORE.getRawList().stream()
+                        .map(l -> MM.deserialize(l,
+                                Placeholder.unparsed("ticket", Integer.toString(amount)),
+                                Placeholder.unparsed("money", SpigotCommons.formatMoney(
+                                        amount * plugin.getConfig().getDouble("buy_price")))))
+                        .toList())
+                .build();
     }
 
     public void openGui(Player player) {
         addPlayerToCounter(player);
-        setTicketAmountItem(getCounter(player), inv);
         load();
+        setTicketAmountItem(getCounter(player), inv);
         player.openInventory(inv);
     }
 
     public void load() {
         inv.setItem(4, grabber.getBuyNavigator());
-
         for (int i = 0; i < 3; i++) {
             inv.setItem(33 + i, grabber.getCancelBuy());
             inv.setItem(42 + i, grabber.getCancelBuy());
             inv.setItem(51 + i, grabber.getCancelBuy());
-        }
-
-        for (int i = 0; i < 3; i++) {
             inv.setItem(27 + i, grabber.getConfirmBuy());
             inv.setItem(36 + i, grabber.getConfirmBuy());
             inv.setItem(45 + i, grabber.getConfirmBuy());
         }
-
         inv.setItem(21, grabber.getAdd());
         inv.setItem(23, grabber.getMinus());
         setTicketAmountItem(1, inv);
     }
 
+    private void setTicketAmountItem(int amount, Inventory target) {
+        target.setItem(22, getTicketAmountItem(amount));
+    }
+
     @EventHandler(priority = EventPriority.LOW)
     public void onClick(InventoryClickEvent event) {
-        ItemStack eventItem = event.getCurrentItem();
-        double buyPrice = plugin.getConfig().getLong("buy_price");
+        if (event.getCurrentItem() == null) return;
+        if (!(event.getClickedInventory() != null
+                && event.getClickedInventory().getHolder() instanceof ConfirmHolder)) return;
+
         Player player = (Player) event.getWhoClicked();
+        int count = getCounter(player);
+        double buyPrice = plugin.getConfig().getDouble("buy_price");
+        ItemStack clicked = event.getCurrentItem();
 
-        if (eventItem == null || !(event.getClickedInventory().getHolder() instanceof ConfirmHolder)) {
-            return;
-        }
-
-        // below if check so it will not throw npe
-        int counter = getCounter(player);
-        if (eventItem.equals(grabber.getConfirmBuy())) {
-            if (ticket.getMaxTicketsCanBeBought(player) < counter) {
-                player.sendMessage(Messages.TOO_MANY_TICKETS.getConfigValue(player));
+        if (clicked.isSimilar(grabber.getConfirmBuy())) {
+            if (ticket.getMaxTicketsCanBeBought(player) < count) {
+                Messages.TOO_MANY_TICKETS.send(player);
                 sound.playSound(player, plugin);
                 player.closeInventory();
+                event.setCancelled(true);
                 return;
             }
-            if (plugin.getVaultEcon().getBalance(player) < buyPrice * getCounter(player)) {
-                player.sendMessage(Messages.NOT_ENOUGH_MONEY.getConfigValue(player));
+            if (plugin.getVaultEcon().getBalance(player) < buyPrice * count) {
+                Messages.NOT_ENOUGH_MONEY.send(player);
                 sound.playSound(player, plugin);
                 player.closeInventory();
+                event.setCancelled(true);
                 return;
             }
-            Purchase purchase = new Purchase(player, counter, plugin);
-            purchase.executePurchase(true, true);
+            new Purchase(player, count, plugin).executePurchase(true, true);
             event.setCancelled(true);
             player.closeInventory();
             return;
         }
 
-        if (eventItem.equals(grabber.getCancelBuy())) {
+        if (clicked.isSimilar(grabber.getCancelBuy())) {
             event.setCancelled(true);
-            player.closeInventory();
             sound.playSound(player, plugin);
+            player.closeInventory();
             return;
         }
 
-        if (eventItem.equals(grabber.getAdd())) {
+        if (clicked.isSimilar(grabber.getAdd())) {
             event.setCancelled(true);
+            if (ticket.getMaxTicketsCanBeBought(player) >= count + 1) {
+                setCounter(player, count + 1);
+                setTicketAmountItem(getCounter(player), event.getClickedInventory());
+            }
+            return;
+        }
 
-            if (ticket.getMaxTicketsCanBeBought(player) >= counter + 1) {
-                setCounter(player, counter + 1);
+        if (clicked.isSimilar(grabber.getMinus())) {
+            event.setCancelled(true);
+            if (count > 1) {
+                setCounter(player, count - 1);
                 setTicketAmountItem(getCounter(player), event.getClickedInventory());
             }
         }
-
-        if (eventItem.equals(grabber.getMinus())) {
-            event.setCancelled(true);
-            if (counter == 1)
-                return;
-            setCounter(player, counter - 1);
-            setTicketAmountItem(getCounter(player), event.getClickedInventory());
-        }
     }
 
-    public void setCounter(Player player, int i) {
-        if (counter.containsKey(player.getUniqueId())) {
-            counter.put(player.getUniqueId(), i);
-            setTicketAmountItem(i, inv);
-        } else {
-            throw new IllegalArgumentException("Player not found");
-        }
+    public void setCounter(Player player, int value) {
+        if (!counter.containsKey(player.getUniqueId()))
+            throw new IllegalArgumentException("Player not in counter map.");
+        counter.put(player.getUniqueId(), value);
+        setTicketAmountItem(value, inv);
     }
 }

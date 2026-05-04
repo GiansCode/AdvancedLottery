@@ -1,6 +1,5 @@
 package com.gmail.ianlim224.advancedlottery.tasks;
 
-import com.cryptomorin.xseries.XMaterial;
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
 import com.gmail.ianlim224.advancedlottery.gui.HelpGUI;
 import com.gmail.ianlim224.advancedlottery.gui.LotteryGUI;
@@ -8,69 +7,67 @@ import com.gmail.ianlim224.advancedlottery.items.MenuItems;
 import com.gmail.ianlim224.advancedlottery.object.LotteryPot;
 import com.gmail.ianlim224.advancedlottery.utils.ItemBuilder;
 import com.gmail.ianlim224.advancedlottery.utils.SpigotCommons;
-import org.bukkit.inventory.Inventory;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.List;
+
 public class ItemTask implements Runnable {
+
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+
     private final AdvancedLottery plugin;
-    private ItemStack pot;
-    private ItemStack clock;
-    private LotteryPot lotteryPot = LotteryPot.getInstance(AdvancedLottery.getInstance());
-    private LotteryGUI lotteryInventory;
+    private final LotteryPot lotteryPot;
+    private final LotteryGUI lotteryInventory;
 
     public ItemTask(AdvancedLottery plugin) {
-        lotteryInventory = LotteryGUI.getInstance();
-        this.plugin = plugin;
-        try {
-            updatePotAndClock();
-        } catch (Exception e) {
-            System.out.println("---------------------------------");
-            plugin.getLogger().warning("An error occurred when loading items.yml, resetting to default...");
-            plugin.getLogger().warning("Please make sure that all material values are valid");
-            System.out.println("---------------------------------");
-            for (MenuItems i : MenuItems.values()) {
-                MenuItems.getFc().set(i.getPath(), i.getDefaultListValue());
-                MenuItems.loadConfigValues();
-            }
-            plugin.getItemsManager().saveConfig();
-        }
+        this.plugin           = plugin;
+        this.lotteryPot       = LotteryPot.getInstance(AdvancedLottery.getInstance());
+        this.lotteryInventory = LotteryGUI.getInstance();
     }
 
     @Override
     public void run() {
-        updatePotAndClock();
+        String money     = SpigotCommons.formatMoney(lotteryPot.getMoneyInPot());
+        String time      = plugin.getLotteryTimer().time(false);
+        String timeShort = plugin.getLotteryTimer().time(true);
 
-        for (Inventory inv : lotteryInventory.getMenuInventory()) {
-            inv.setItem(47, getPot());
-            inv.setItem(51, getClock());
+        ItemStack pot   = buildPot(money);
+        ItemStack clock = buildClock(time, timeShort);
+
+        for (var inv : lotteryInventory.getMenuInventory()) {
+            inv.setItem(47, pot);
+            inv.setItem(51, clock);
         }
-        HelpGUI.getInstance(plugin).getInventory().setItem(39, getPot());
-        HelpGUI.getInstance(plugin).getInventory().setItem(41, getClock());
+
+        var helpInv = HelpGUI.getInstance(plugin).getInventory();
+        helpInv.setItem(39, pot);
+        helpInv.setItem(41, clock);
     }
 
-    public ItemStack getPot() {
-        return pot;
+    private ItemStack buildPot(String money) {
+        Material mat = Material.matchMaterial(MenuItems.MONEY_POT_MATERIAL.getRaw());
+        if (mat == null) mat = Material.BUCKET;
+        return new ItemBuilder(mat)
+                .displayName(MenuItems.MONEY_POT_NAME.asComponent())
+                .lore(MenuItems.MONEY_POT_LORE.getRawList().stream()
+                        .map(l -> MM.deserialize(l, Placeholder.unparsed("money", money)))
+                        .toList())
+                .build();
     }
 
-    private void setPot(ItemStack pot) {
-        this.pot = pot;
+    private ItemStack buildClock(String time, String timeShort) {
+        Material mat = Material.matchMaterial(MenuItems.TIME_PREVIEW_MATERIAL.getRaw());
+        if (mat == null) mat = Material.CLOCK;
+        return new ItemBuilder(mat)
+                .displayName(MenuItems.TIME_PREVIEW_NAME.asComponent())
+                .lore(MenuItems.TIME_PREVIEW_LORE.getRawList().stream()
+                        .map(l -> MM.deserialize(l,
+                                Placeholder.unparsed("time", time),
+                                Placeholder.unparsed("time_short", timeShort)))
+                        .toList())
+                .build();
     }
-
-    public ItemStack getClock() {
-        return clock;
-    }
-
-    private void setClock(ItemStack clock) {
-        this.clock = clock;
-    }
-
-    private void updatePotAndClock() {
-        setPot(new ItemBuilder(XMaterial.matchXMaterial(MenuItems.MONEY_POT_MATERIAL.getStringValue()).get().parseMaterial()).setName(MenuItems.MONEY_POT_NAME.getStringValue())
-                .setLore(AdvancedLottery.replace(MenuItems.MONEY_POT_LORE.getListValue(), "%money%", SpigotCommons.formatMoney(lotteryPot.getMoneyInPot()))).toItemStack());
-        setClock(new ItemBuilder(new ItemStack(XMaterial.matchXMaterial(MenuItems.TIME_PREVIEW_MATERIAL.getStringValue()).get().parseMaterial())).setName(MenuItems.TIME_PREVIEW_NAME.getStringValue())
-                .setLore(MenuItems.TIME_PREVIEW_LORE.getStringValue().replaceAll("%time%", plugin.getLotteryTimer().time(false))
-                        .replaceAll("%time_short%", plugin.getLotteryTimer().time(true)))
-                .toItemStack());
-    }
-
 }

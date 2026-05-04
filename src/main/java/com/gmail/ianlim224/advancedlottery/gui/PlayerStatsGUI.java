@@ -1,12 +1,14 @@
 package com.gmail.ianlim224.advancedlottery.gui;
 
-import com.cryptomorin.xseries.XMaterial;
 import com.gmail.ianlim224.advancedlottery.AdvancedLottery;
 import com.gmail.ianlim224.advancedlottery.clickablechat.ClickableText;
 import com.gmail.ianlim224.advancedlottery.items.MenuItems;
+import com.gmail.ianlim224.advancedlottery.legacy.SkullManager;
 import com.gmail.ianlim224.advancedlottery.messages.Messages;
 import com.gmail.ianlim224.advancedlottery.object.LotteryTicket;
 import com.gmail.ianlim224.advancedlottery.utils.ItemBuilder;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
@@ -19,63 +21,86 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.Collections;
+import java.util.List;
 
 public class PlayerStatsGUI implements Listener {
+    private static final MiniMessage MM = MiniMessage.miniMessage();
+
     private final AdvancedLottery plugin;
     private final Inventory inv;
     private final OfflinePlayer player;
 
     public PlayerStatsGUI(OfflinePlayer player, AdvancedLottery plugin) {
-        this.plugin = plugin;
-        this.player = player;
-        inv = Bukkit.createInventory(new StatsHolder(), 54, AdvancedLottery.f(AdvancedLottery.getLotteryGrabber().getPlayerMenuName()));
+        this.plugin  = plugin;
+        this.player  = player;
+        this.inv     = Bukkit.createInventory(new StatsHolder(), 54,
+                MM.deserialize(AdvancedLottery.getLotteryGrabber().getPlayerMenuName()));
         Bukkit.getPluginManager().registerEvents(this, plugin);
 
-        for (int i = 0; i != 54; i++) {
-            inv.setItem(i, new ItemBuilder(XMaterial.MAGENTA_STAINED_GLASS_PANE.parseMaterial()).setName(" ").toItemStack());
-        }
+        var pane = new ItemBuilder(Material.MAGENTA_STAINED_GLASS_PANE)
+                .displayName(net.kyori.adventure.text.Component.empty()).build();
+        for (int i = 0; i < 54; i++) inv.setItem(i, pane);
     }
 
-    public void openGui(Player p) {
-        ItemStack playerHead = new ItemBuilder(plugin.getSkullManager().getSkull(player))
-                .setLore(Collections.emptyList()).setName(MenuItems.PLAYER_HEAD_NAME.getStringValue().replaceAll("%player%", player.getName())).toItemStack();
-        inv.setItem(13, playerHead);
+    public void openGui(Player viewer) {
+        String playerName = player.getName() != null ? player.getName() : "Unknown";
+        int tickets = LotteryTicket.getInstance(AdvancedLottery.getInstance())
+                .getTicketsBought(player.getUniqueId());
 
-        String target = player.getName();
-        LotteryTicket ticket = LotteryTicket.getInstance(AdvancedLottery.getInstance());
-        ItemStack message = new ItemBuilder(XMaterial.matchXMaterial(MenuItems.SEND_MESSAGE_MATERIAL.getStringValue()).get().parseMaterial()).setName(MenuItems.SEND_MESSAGE_NAME.getStringValue()).setLore(MenuItems.SEND_MESSAGE_LORE.getStringValue().replaceAll("%player%", target)).toItemStack();
-        ItemStack ticketsBought = new ItemBuilder(XMaterial.matchXMaterial(MenuItems.TICKETS_BOUGHT_MATERIAL.getStringValue()).get().parseMaterial()).setName(MenuItems.TICKETS_BOUGHT_NAME.getStringValue()).setLore(MenuItems.TICKETS_BOUGHT_LORE.getStringValue().replaceAll("%player%", target).replaceAll("%ticket%", Integer.toString(ticket.getTicketsBought(player.getUniqueId())))).toItemStack();
+        ItemStack head = new ItemBuilder(SkullManager.getSkull(player))
+                .displayName(MM.deserialize(MenuItems.PLAYER_HEAD_NAME.getRaw(),
+                        Placeholder.unparsed("player", playerName)))
+                .lore(List.of())
+                .build();
+        inv.setItem(13, head);
+
+        Material msgMat = Material.matchMaterial(MenuItems.SEND_MESSAGE_MATERIAL.getRaw());
+        if (msgMat == null) msgMat = Material.PAPER;
+        ItemStack message = new ItemBuilder(msgMat)
+                .displayName(MenuItems.SEND_MESSAGE_NAME.asComponent())
+                .lore(List.of(MM.deserialize(MenuItems.SEND_MESSAGE_LORE.getRaw(),
+                        Placeholder.unparsed("player", playerName))))
+                .build();
+
+        Material ticketMat = Material.matchMaterial(MenuItems.TICKETS_BOUGHT_MATERIAL.getRaw());
+        if (ticketMat == null) ticketMat = Material.EMERALD;
+        ItemStack ticketItem = new ItemBuilder(ticketMat)
+                .displayName(MenuItems.TICKETS_BOUGHT_NAME.asComponent())
+                .lore(List.of(MM.deserialize(MenuItems.TICKETS_BOUGHT_LORE.getRaw(),
+                        Placeholder.unparsed("player", playerName),
+                        Placeholder.unparsed("ticket", Integer.toString(tickets)))))
+                .build();
 
         inv.setItem(39, message);
-        inv.setItem(41, ticketsBought);
+        inv.setItem(41, ticketItem);
 
-        p.openInventory(inv);
+        viewer.openInventory(inv);
     }
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        if (event.getCurrentItem() == null) {
+        if (event.getCurrentItem() == null) return;
+        if (!(event.getInventory().getHolder() instanceof StatsHolder)) return;
+
+        event.setCancelled(true);
+
+        if (!player.isOnline()) {
+            Messages.PLAYER_NOT_ONLINE.send((Player) event.getWhoClicked(),
+                    Placeholder.unparsed("player", player.getName() != null ? player.getName() : "Unknown"));
+            event.getWhoClicked().closeInventory();
             return;
         }
 
-        if (event.getInventory().getHolder() instanceof StatsHolder) {
-            event.setCancelled(true);
-
-            if (!player.isOnline()) {
-                Player p = (Player) event.getWhoClicked();
-                event.getWhoClicked().sendMessage(Messages.PLAYER_NOT_ONLINE.getConfigValue(p).replaceAll("%player%", player.getName()));
-                event.getWhoClicked().closeInventory();
-                return;
-            }
-
-            Player target = player.getPlayer();
-            ItemStack item = event.getCurrentItem();
-            if (item.getType() == Material.PAPER) {
-                event.getWhoClicked().closeInventory();
-                ClickableText chat = new ClickableText();
-                chat.sendMessageWithAction((Player) event.getWhoClicked(), Messages.CLICK_ME_TEXT.getConfigValue((Player) event.getWhoClicked()), Messages.CLICK_ME_HOVER_TEXT.getConfigValue((Player) event.getWhoClicked()).replaceAll("%player%", player.getName()), target);
-            }
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked.getType() == Material.PAPER) {
+            Player sender = (Player) event.getWhoClicked();
+            event.getWhoClicked().closeInventory();
+            new ClickableText().sendMessageWithAction(
+                    sender,
+                    Messages.CLICK_ME_TEXT.asComponent(sender),
+                    Messages.CLICK_ME_HOVER_TEXT.asComponent(sender,
+                            Placeholder.unparsed("player", player.getName() != null ? player.getName() : "Unknown")),
+                    player.getPlayer());
         }
     }
 

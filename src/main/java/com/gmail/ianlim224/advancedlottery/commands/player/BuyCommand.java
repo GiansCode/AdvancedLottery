@@ -13,43 +13,41 @@ import com.gmail.ianlim224.advancedlottery.object.TicketTransaction;
 import com.gmail.ianlim224.advancedlottery.sounds.CancelSound;
 import com.gmail.ianlim224.advancedlottery.text.TextConfirmer;
 import com.gmail.ianlim224.advancedlottery.utils.SpigotCommons;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.w3c.dom.Text;
 
 public class BuyCommand implements Executable {
 
     @Override
     public CommandResponse onExecute(CommandSender sender, String[] args, AdvancedLottery plugin) {
-        if (args.length > 2) {
-            return CommandResponse.INCORRECT_ARGS;
-        }
+        if (args.length > 2) return CommandResponse.INCORRECT_ARGS;
 
         Player player = (Player) sender;
         LotteryTicket ticket = LotteryTicket.getInstance(plugin);
         CancelSound sound = new CancelSound();
+        PurchaseCooldown cooldown = PurchaseCooldown.getInstance(plugin);
 
-        PurchaseCooldown purchaseCooldown = PurchaseCooldown.getInstance(plugin);
-        if (!purchaseCooldown.getCooldown().isReady(player) && !player.hasPermission("advancedlottery.cooldown.bypass")) {
-            player.sendMessage(Messages.BUY_TICKET_COOLDOWN.getConfigValue(player).replaceAll("%time%", purchaseCooldown.getCooldown().getTimeLeft(player).getSeconds() + ""));
+        if (!cooldown.getCooldown().isReady(player) && !player.hasPermission("advancedlottery.cooldown.bypass")) {
+            Messages.BUY_TICKET_COOLDOWN.send(player,
+                    Placeholder.unparsed("time",
+                            String.valueOf(cooldown.getCooldown().getTimeLeft(player).getSeconds())));
             sound.playSound(player, plugin);
-            player.closeInventory();
             return CommandResponse.SUCCESS;
         }
 
-        purchaseCooldown.getCooldown().addCooldown(player);
+        cooldown.getCooldown().addCooldown(player);
 
         if (args.length == 1) {
-            if (plugin.getVaultEcon().getBalance(player) < LotteryTicket.getInstance(plugin).getTicketCost()) {
-                player.sendMessage(Messages.NOT_ENOUGH_MONEY.getConfigValue(player));
+            if (plugin.getVaultEcon().getBalance(player) < ticket.getTicketCost()) {
+                Messages.NOT_ENOUGH_MONEY.send(player);
                 sound.playSound(player, plugin);
                 return CommandResponse.SUCCESS;
             }
-
             if (!ticket.isMaxTickets(player)) {
                 queryConfirmation(1, player, false, plugin);
             } else {
-                player.sendMessage(Messages.ALREADY_BOUGHT.getConfigValue(player));
+                Messages.ALREADY_BOUGHT.send(player);
                 sound.playSound(player, plugin);
             }
             return CommandResponse.SUCCESS;
@@ -57,91 +55,67 @@ public class BuyCommand implements Executable {
 
         if (args.length == 2) {
             if (!SpigotCommons.isInteger(args[1])) {
-                if (!args[1].equalsIgnoreCase("confirm")) {
-                    return CommandResponse.INCORRECT_ARGS;
-                }
+                if (!args[1].equalsIgnoreCase("confirm")) return CommandResponse.INCORRECT_ARGS;
 
                 TextConfirmer confirmer = TextConfirmer.getInstance();
                 if (!confirmer.hasPendingConfirmation(player)) {
-                    player.sendMessage(Messages.NO_PENDING_CONFIRMATIONS.getConfigValue(player));
+                    Messages.NO_PENDING_CONFIRMATIONS.send(player);
                     return CommandResponse.SUCCESS;
                 }
-
                 TicketTransaction transaction = confirmer.completePendingConfirmation(player);
-                Purchase purchase = new Purchase(player, transaction, plugin);
-                purchase.executePurchase(true, true);
+                new Purchase(player, transaction, plugin).executePurchase(true, true);
                 return CommandResponse.SUCCESS;
             }
 
             int amount = Integer.parseInt(args[1]);
+            if (amount <= 0) return CommandResponse.INCORRECT_ARGS;
 
-            if (amount <= 0) {
-                return CommandResponse.INCORRECT_ARGS;
-            }
-
-            if (plugin.getVaultEcon().getBalance(player) < LotteryTicket.getInstance(plugin).getTicketCost() * amount) {
-                player.sendMessage(Messages.NOT_ENOUGH_MONEY.getConfigValue(player));
+            if (plugin.getVaultEcon().getBalance(player) < ticket.getTicketCost() * amount) {
+                Messages.NOT_ENOUGH_MONEY.send(player);
                 sound.playSound(player, plugin);
                 return CommandResponse.SUCCESS;
             }
-
             if (ticket.isMaxTickets(player)) {
-                player.sendMessage(Messages.ALREADY_BOUGHT.getConfigValue(player));
+                Messages.ALREADY_BOUGHT.send(player);
                 sound.playSound(player, plugin);
-                return CommandResponse.SUCCESS;
             } else if (ticket.getMaxTicketsCanBeBought(player) < amount) {
-                player.sendMessage(Messages.TOO_MANY_TICKETS.getConfigValue(player));
+                Messages.TOO_MANY_TICKETS.send(player);
                 sound.playSound(player, plugin);
-                return CommandResponse.SUCCESS;
             } else {
                 queryConfirmation(amount, player, true, plugin);
-                return CommandResponse.SUCCESS;
             }
         }
 
         return CommandResponse.SUCCESS;
-
     }
 
-    private void queryConfirmation(int tickets, Player player, boolean hasAmountArgs, AdvancedLottery plugin) {
-        boolean useText = false;
-        boolean openConfirmMenu = false;
-        if (hasAmountArgs) {
+    private void queryConfirmation(int tickets, Player player, boolean hasAmount, AdvancedLottery plugin) {
+        boolean useText;
+        boolean openMenu;
+        if (hasAmount) {
             useText = plugin.getConfig().getBoolean("use_text_confirmation_on_buy_amount");
-            openConfirmMenu = plugin.getConfig().getBoolean("open_confirm_menu_on_buy_amount");
+            openMenu = plugin.getConfig().getBoolean("open_confirm_menu_on_buy_amount");
         } else {
             useText = plugin.getConfig().getBoolean("use_text_confirmation_on_buy");
-            openConfirmMenu = plugin.getConfig().getBoolean("open_confirm_menu_on_buy");
+            openMenu = plugin.getConfig().getBoolean("open_confirm_menu_on_buy");
         }
-
 
         TicketTransaction transaction = new TicketTransaction(tickets, plugin);
         if (useText) {
             TextConfirmer.getInstance().addPendingConfirmation(player, transaction);
-            player.sendMessage(Messages.BUY_TEXT_CONFIRM.getConfigValue(player).replaceAll("%ticket%", tickets + "").replaceAll("%price%", SpigotCommons.formatMoney(transaction.getTotalPrice())));
-        } else if (openConfirmMenu) {
-            ConfirmGUI confirmGui = new ConfirmGUI(plugin);
-            confirmGui.openGui(player);
-            confirmGui.setCounter(player, tickets);
+            Messages.BUY_TEXT_CONFIRM.send(player,
+                    Placeholder.unparsed("ticket", Integer.toString(tickets)),
+                    Placeholder.unparsed("price", SpigotCommons.formatMoney(transaction.getTotalPrice())));
+        } else if (openMenu) {
+            ConfirmGUI gui = new ConfirmGUI(plugin);
+            gui.openGui(player);
+            gui.setCounter(player, tickets);
         } else {
-            Purchase purchase = new Purchase(player, transaction, plugin);
-            purchase.executePurchase(true, true);
+            new Purchase(player, transaction, plugin).executePurchase(true, true);
         }
     }
 
-    @Override
-    public String getLabel() {
-        return "buy";
-    }
-
-    @Override
-    public Permissions getPermission() {
-        return Permissions.DEFAULT;
-    }
-
-    @Override
-    public boolean isCmdPlayerOnly() {
-        return true;
-    }
-
+    @Override public String getLabel()          { return "buy"; }
+    @Override public Permissions getPermission() { return Permissions.DEFAULT; }
+    @Override public boolean isCmdPlayerOnly()   { return true; }
 }
